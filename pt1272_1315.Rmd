@@ -17,17 +17,6 @@ library(pheatmap)
 library(cowplot)
 ```
 
-```{r setup, include=FALSE}
-knitr::opts_knit$set(root.dir = "/Users/michellefranco/scRNA_patientss/data/")
-#setwd(dir = "/Users/michellefranco/scRNA_patientss/data")
-```
-
-```{r}
-# Check the working directory
-current_dir <- getwd()
-current_dir
-```
-
 ##load in data and creatining individual seurat objects 
 ```{r} # where are these files loaded from??
 seurat_list_pt1272_1315 <- list()
