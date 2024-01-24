@@ -115,7 +115,7 @@ for (i in 1:length(cluster_markers1315)) {
 }
 
 
-saveRDS(data_1315, file = "/Users/michellefranco/scRNA_patientss/data/pt1315/1315dge_feature_plots.rds")
+saveRDS(data_1315, file = "/you_path")
 
 
 
