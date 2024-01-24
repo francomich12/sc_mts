@@ -97,7 +97,7 @@ for (i in 1:length(cluster_markers)) {
 }
 
 
-saveRDS(data_pt1272, file = "/Users/michellefranco/scRNA_patientss/data/pt1272/1272_dge_feature_plots.rds")
+saveRDS(data_pt1272, file = "/your_path")
 
 
 
