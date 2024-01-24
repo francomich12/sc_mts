@@ -1,0 +1,691 @@
+---
+title: "Patient 1272 scRNA analysis"
+output: github_document
+---
+---
+title: "Patient 1272 EC"
+author: "Michelle.Franco"
+date: "2023-08-02"
+output: html_document
+---
+```{r init, echo = FALSE}
+library(dplyr)
+library(patchwork)
+library(Seurat)
+library(tidyverse)
+library(Matrix)
+library(scales)
+library(SingleR)
+library(pheatmap)
+library(cowplot)
+library(ggplot2)
+
+```
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/Users/michellefranco/scRNA_patientss/data")
+```
+```{r}
+# Check the working directory
+current_dir <- getwd()
+current_dir
+```
+
+# Create each individual Seurat object for every sample
+```{r}
+for (file in c("PT1272_Normal_feature_bc_matrix", "PT1272_pdcc_feature_bc_matrix", "PT1272_Tumor_feature_bc_matrix")) {
+   seurat_data_pt1272 <- Read10X(data.dir = paste0("pt1272/", file))
+   seurat_obj_pt1272 <- CreateSeuratObject(counts = seurat_data_pt1272, min.cells = 20, min.features = 200, project = file)
+   assign(file, seurat_obj_pt1272)
+}
+seurat_obj_pt1272
+```
+
+```{r}
+#check the metadata in the new seurat objects
+PT1272_Normal_feature_bc_matrix
+```
+```{r}
+PT1272_pdcc_feature_bc_matrix
+```
+```{r}
+PT1272_Tumor_feature_bc_matrix
+```
+merge
+```{r}
+#create a merged seurat object
+pt1272_merged_seurat <- merge(PT1272_Normal_feature_bc_matrix, y = c(PT1272_pdcc_feature_bc_matrix, PT1272_Tumor_feature_bc_matrix),
+   add.cell.ids = c("Normal", "pdcc", "Tumor"), 
+   project = "Cancer_pt1272")
+```
+
+```{r}
+#examining first 30 cells, genes known to be expressed in a good number of cells 
+seurat_data_pt1272[c("CD3D","TCL1A","MS4A1"), 1:30]
+```
+
+```{r}
+dense.size_1272 <- object.size(as.matrix(seurat_data_pt1272))
+dense.size_1272
+sparse.size_1272 <- object.size(seurat_data_pt1272)
+sparse.size_1272
+dense.size_1272 / sparse.size_1272
+```
+```{r }
+###add number if genes per UMI for each cell to metadata
+pt1272_merged_seurat$log10GenesPerUMI <- log10(pt1272_merged_seurat$nFeature_RNA) / log10(pt1272_merged_seurat$nCount_RNA)
+
+```
+#compute percent mito ratio 
+percentfeatureset will take a pattern and search the gene identifiers, for each column (cell) it will take the sum of the counts slot for features belonging to the set, 
+divide by the column sum for all features and multiply by 100. ("-MT") works for human genes
+```{r}
+#percentfeatureset will take a pattern and search the gene identifiers,
+#for each column (cell) it will take the sum of the counts slot for features belonging to the set, 
+#divide by the column sum for all features and multiply by 100. ("-MT") works for human genes
+pt1272_merged_seurat$mitoRatio <- PercentageFeatureSet(object = pt1272_merged_seurat, pattern = "^MT-")
+pt1272_merged_seurat$mitoRatio <- pt1272_merged_seurat@meta.data$mitoRatio / 100 #want the ratio value for plotting, reversing step and then divinding by 100
+
+```
+###plot merged_seurat histogram 
+most cells have less than 0.1 percent mitochondrial RNA
+```{r}
+hist(pt1272_merged_seurat[["mitoRatio"]]$mitoRatio , breaks = 20) ######
+```
+```{r}
+head(pt1272_merged_seurat)
+```
+#Visualize QC metrics as a violin plot
+```{r}
+vln_plot <- VlnPlot(pt1272_merged_seurat, features = c("nFeature_RNA", "nCount_RNA", "mitoRatio"), ncol = 3)
+ggsave("vln_plot.png", vln_plot, width = 10, height = 8)
+# FeatureScatter is typically used to visualize feature-feature relationships, but can be used for anything calculated by the object, i.e. columns in object metadata, PC scores etc.
+
+plot1_1272 <- FeatureScatter(pt1272_merged_seurat, feature1 = "nCount_RNA", feature2 = "mitoRatio") 
+plot2_1272 <- FeatureScatter(pt1272_merged_seurat, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+ggsave("plot1_1272.png", plot1_1272, width = 10, height = 8)
+ggsave("plot2_1272.png", plot2_1272, width = 10, height = 8)
+
+combined_plot <-plot1_1272 + plot2_1272
+ggsave("combined_feature_scatter_plot.png", combined_plot, width = 10, height = 8)
+
+ecdf_plot <- plot.ecdf(pt1272_merged_seurat[["nCount_RNA"]]$nCount_RNA )
+pt1272_merged_seurat <- subset(pt1272_merged_seurat, subset = nFeature_RNA < 2000 & nCount_RNA < 5000 & mitoRatio < 5)
+ggsave("ecdf_plot.png", ecdf_plot, width = 10, height = 8)
+```
+
+###create metadata dataframe
+```{r}
+#create metadata dataframe 
+metadata_pt1272 <- pt1272_merged_seurat@meta.data
+
+# add cell IDs to metadata
+metadata_pt1272$cells <-rownames(metadata_pt1272)
+
+#rename columns 
+metadata_pt1272 <- metadata_pt1272 %>%
+  dplyr::rename(seq_folder = orig.ident,
+                nUMI = nCount_RNA,
+                nGene = nFeature_RNA)
+```
+
+
+```{r}
+FeatureScatter(pt1272_merged_seurat, feature1 = "mitoRatio", feature2 = "nFeature_RNA") + 
+    geom_vline(xintercept = 5) +
+  	geom_hline(yintercept = c(200, 3000)) +
+    labs(title="Very high percent.mt cells\n have very low nFeatures") + NoLegend() -> p1
+FeatureScatter(pt1272_merged_seurat, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") +
+  	geom_hline(yintercept = c(200, 3000)) +
+    labs(title="nFeature and nCount\n are correlated") + NoLegend() -> p2
+p1+p2
+```
+```{r}
+
+#define split_seurat_pt1272 using the list of Seurat objects for each sample
+split_seurat_pt1272 <- list(
+  Normal = PT1272_Normal_feature_bc_matrix,
+  Tumor = PT1272_Tumor_feature_bc_matrix,
+  PDCC = PT1272_pdcc_feature_bc_matrix
+)
+#create sample column
+
+metadata_pt1272$sample <- NA
+metadata_pt1272$sample[which(str_detect(metadata_pt1272$cells, "^Normal_"))] <- "Normal"
+metadata_pt1272$sample[which(str_detect(metadata_pt1272$cells, "^Tumor_"))] <- "Tumor"
+metadata_pt1272$sample[which(str_detect(metadata_pt1272$cells, "^pdcc_"))] <- "PDCC"
+
+#add metadata back to seurat object
+pt1272_merged_seurat@meta.data <- metadata_pt1272
+
+#create .RDaTa object to load at any time
+saveRDS(pt1272_merged_seurat, file = "pt1272/pt1272_merged_seurat.RData")
+```
+#visualize the number of cell counts per sample
+
+```{r}
+#visualize the number of cell counts per sample
+metadata_pt1272 %>% 
+  ggplot(aes(x= sample, fill= sample)) +
+  geom_bar() +
+  theme_classic()+
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  theme(plot.title = element_text(hjust= 0.05, face= "bold")) +
+  ggtitle("NCells")
+
+```
+```{r}
+#visualize the number of UMIs/transcripts per cell
+metadata_pt1272 %>%
+  ggplot(aes(color = sample, x= nUMI, fill= sample)) +
+  geom_density(alpha = 0.2) + 
+  scale_x_log10(labels = comma) + 
+  theme_classic() +
+  ylab("Cell density") +
+  geom_vline(xintercept = 500)
+```
+
+```{r}
+#visualize the distribution of genes detected per cell via histogram
+metadata_pt1272 %>% 
+  ggplot(aes(color=sample, x=nGene, fill= sample)) + 
+  geom_density(alpha = 0.2) + 
+  theme_classic() +
+  scale_x_log10() + 
+  geom_vline(xintercept = 300)
+
+```
+```{r}
+#visualize the distribution of genes detected per cell via boxplot
+metadata_pt1272 %>% 
+  ggplot(aes(x=sample, y=log10(nGene), fill=sample)) + 
+  geom_boxplot() + 
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  theme(plot.title = element_text(hjust=0.5, face="bold")) +
+  ggtitle("NCells vs NGenes")
+
+```
+#visualize the correlation between genes detected and number of UMIs and determine whether strong presence of cells with low numbers of genes/UMIs
+```{r}
+
+metadata_pt1272 %>% 
+  ggplot(aes(x=nUMI, y=nGene, color=mitoRatio)) + 
+  geom_point() + 
+  scale_colour_gradient(low = "gray90", high = "black") +
+  stat_smooth(method=lm) +
+  scale_x_log10() + 
+  scale_y_log10() + 
+  theme_classic() +
+  geom_vline(xintercept = 500) +
+  geom_hline(yintercept = 250) +
+  facet_wrap(~sample)
+```
+#visualize the distribution of mitochondrial gene expression detected per cell
+```{r}
+
+metadata_pt1272 %>% 
+  ggplot(aes(color=sample, x=mitoRatio, fill=sample)) + 
+  geom_density(alpha = 0.2) + 
+  scale_x_log10() + 
+  theme_classic() +
+  geom_vline(xintercept = 0.2)
+```
+# Visualize the overall complexity of the gene expression by visualizing the genes detected per UMI
+```{r}
+
+metadata_pt1272 %>%
+  ggplot(aes(x=log10GenesPerUMI, color = sample, fill=sample)) +
+  geom_density(alpha = 0.2) +
+  theme_classic() +
+  geom_vline(xintercept = 0.8)
+```
+#cell-level filtering
+#filter out low quality reads 
+```{r}
+
+filtered_seurat_1272 <- subset(x= pt1272_merged_seurat,
+                          subset= (nUMI >= 500) &
+                            (nGene >=250) &
+                            (log10GenesPerUMI > 0.80) &
+                        (mitoRatio < 0.20))
+```
+#gene-level filtering
+remove genes that have zero expression in all cells and perform some filtering by prevalance. 
+
+```{r}
+#extract counts
+
+counts_1272 <- GetAssayData(object = filtered_seurat_1272, slot = "counts")
+#output a logical vector for every gene on whether it has more than zero counts per cell
+nonzero_1272 <- counts_1272 > 0
+
+#sums all TRUE values and returns TRUE if more than 10 TRUE values per gene
+keep_genes_pt1272 <- Matrix::rowSums(nonzero_1272) >= 10
+
+#keep only genes expressed in more than 10 cells
+filtered_counts_1272 <- counts_1272[keep_genes_pt1272, ]
+
+#update the filtered counts in the filtered_seurat object
+filtered_seurat_1272[["RNA"]] <- CreateAssayObject(counts = filtered_counts_1272)
+
+#save filtered subset to new metadata (optional, depending on your use case)
+metadata_clean_1272 <- filtered_seurat_1272@meta.data
+
+```
+##re-assesing QC metrics 
+performing same plots as with the unfiltered data to determine if threshhods where appropriate
+
+```{r}
+#visualize the number of cell counts per sample
+metadata_clean_1272 %>% 
+  ggplot(aes(x= sample, fill= sample)) +
+  geom_bar() +
+  theme_classic()+
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  theme(plot.title = element_text(hjust= 0.05, face= "bold")) +
+  ggtitle("NCells")
+
+```
+```{r}
+#visualize the nu,ber of UMIs/transcripts per cell
+metadata_clean_1272 %>%
+  ggplot(aes(color = sample, x= nUMI, fill= sample)) +
+  geom_density(alpha = 0.2) + 
+  scale_x_log10() + 
+  theme_classic() +
+  ylab("Cell density") +
+  geom_vline(xintercept = 500)
+```
+
+```{r}
+#visualize the distribution of genes detected per cell via histogram
+metadata_clean_1272 %>% 
+  ggplot(aes(color=sample, x=nGene, fill= sample)) + 
+  geom_density(alpha = 0.2) + 
+  theme_classic() +
+  scale_x_log10() + 
+  geom_vline(xintercept = 300)
+```
+
+```{r}
+#visualize the distribution of genes detected per cell via boxplot
+metadata_clean_1272 %>% 
+  ggplot(aes(x=sample, y=log10(nGene), fill=sample)) + 
+  geom_boxplot() + 
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  theme(plot.title = element_text(hjust=0.5, face="bold")) +
+  ggtitle("NCells vs NGenes")
+```
+
+```{r}
+#visualize the correlation between genes detected and number of UMIs and determine whether strong presence of cells with low numbers of genes/UMIs
+metadata_clean_1272 %>% 
+  ggplot(aes(x=nUMI, y=nGene, color=mitoRatio)) + 
+  geom_point() + 
+  scale_colour_gradient(low = "gray90", high = "black") +
+  stat_smooth(method=lm) +
+  scale_x_log10() + 
+  scale_y_log10() + 
+  theme_classic() +
+  geom_vline(xintercept = 500) +
+  geom_hline(yintercept = 250) +
+  facet_wrap(~sample)
+```
+
+```{r}
+
+#visualize the distribution of mitochondrial gene expression detected per cell
+metadata_clean_1272 %>% 
+  ggplot(aes(color=sample, x=mitoRatio, fill=sample)) + 
+  geom_density(alpha = 0.2) + 
+  scale_x_log10() + 
+  theme_classic() +
+  geom_vline(xintercept = 0.2)
+```
+```{r}
+#visualize the distribution of mitochondrial gene expression detected per cell
+metadata_clean_1272 %>% 
+  ggplot(aes(color=sample, x=mitoRatio, fill=sample)) + 
+  geom_density(alpha = 0.2) + 
+  scale_x_log10() + 
+  theme_classic() +
+  geom_vline(xintercept = 0.2)
+
+```
+
+###count Normalization and PCA
+
+```{r}
+#normalize the counts
+seurat_phase_1272 <- NormalizeData(pt1272_merged_seurat)
+
+```
+
+# Normalize the counts and perform cell cycle scoring
+
+```{r}
+#get the cell cycle marker genes list from Seurat
+data("cc.genes")
+#extract the G2/M phase and S phase marker genes
+g2m_genes <- cc.genes$g2m.genes
+s_genes <- cc.genes$s.genes
+```
+
+```{r}
+#score cells for cell cycle
+#recommended to cceck the cell cycle phase before perfoming sctransfrom method
+seurat_phase_1272 <- CellCycleScoring(seurat_phase_1272, 
+                                 g2m.features = g2m_genes, 
+                                 s.features = s_genes)
+```
+```{r}
+#view cell cycle scores and phases assigned to cells                                 
+View(seurat_phase_1272@meta.data)
+```
+
+```{r}
+#identify the most variable genes
+#determine whether cell cycle is a major source of variation in our dataset using PCA
+seurat_phase_1272 <- FindVariableFeatures(seurat_phase_1272, 
+                                     selection.method = "vst",
+                                     nfeatures = 2000, 
+                                     verbose = FALSE)
+```
+# Scale the counts
+```{r}
+seurat_phase_1272 <- ScaleData(seurat_phase_1272)
+```
+#PCA
+```{r}
+seurat_phase_1272 <- RunPCA(seurat_phase_1272)
+```
+# Plot the PCA colored by cell cycle phase
+```{r}
+DimPlot(seurat_phase_1272,
+        reduction = "pca",
+        group.by= "Phase",
+        split.by = "Phase")
+```
+#### SCTransform
+-more accurate method of normalizing, estimating the variance of the raw filtered data, adn indentifying the most variable genes
+-by default, sctranform accounts for cellular sequencing depth, or nUMIs
+- SCTransform can be applied directly on the merged object.
+```{r}
+#split seurat object by condition to perform cell cycle scoring and SCT on all samples
+split_seurat_pt1272 <- SplitObject(filtered_seurat_1272, split.by = "sample")
+
+split_seurat_pt1272 <- split_seurat_pt1272[c("Normal", "Tumor", "PDCC")]
+
+for (i in 1:length(split_seurat_pt1272)) {
+  split_seurat_pt1272[[i]] <- NormalizeData(split_seurat_pt1272[[i]], verbose = TRUE)
+  split_seurat_pt1272[[i]] <- CellCycleScoring(split_seurat_pt1272[[i]], g2m.features=g2m_genes, s.features=s_genes)
+  split_seurat_pt1272[[i]] <- SCTransform(split_seurat_pt1272[[i]], vars.to.regress = c("mitoRatio"))
+}
+
+# Check which assays are stored in objects
+split_seurat_pt1272$Normal@assays
+split_seurat_pt1272$Tumor@assays
+split_seurat_pt1272$PDCC@assays
+```
+##integration
+```{r}
+#select the most variable features to use for integration
+integ_features_1272 <- SelectIntegrationFeatures(object.list = split_seurat_pt1272, 
+                                            nfeatures = 3000) 
+#prepare the SCT list object for integration
+split_seurat_pt1272 <- PrepSCTIntegration(object.list = split_seurat_pt1272, 
+                                   anchor.features = integ_features_1272)
+# integration anchors, find best buddies
+integ_anchors_1272 <- FindIntegrationAnchors(object.list = split_seurat_pt1272, 
+                                        normalization.method = "SCT", 
+                                        anchor.features = integ_features_1272)
+#integrate across conditions
+pt1272_seurat_integrated <- IntegrateData(anchorset = integ_anchors_1272, 
+                                   normalization.method = "SCT")
+```
+####UMAP visualization
+```{r}
+#run PCA
+#Principal Component analysis used to emphazise variation as well as similarity
+#and to bring out strong patterns in a dataset (dimentinality reduction)
+
+pt1272_seurat_integrated <- RunPCA(object = pt1272_seurat_integrated)
+
+```
+
+```{r}
+#plot PCA
+PCAPlot(pt1272_seurat_integrated,
+        split.by = "sample",
+        group.by = "sample")  
+```
+
+```{r}
+# Plot UMAP                             
+DimPlot(pt1272_seurat_integrated, group.by = "sample") 
+```
+```{r}
+#plot to see whether cells align well if we split the plotting between conditions
+DimPlot(pt1272_seurat_integrated,
+        split.by = "sample",
+        group.by = "sample")  
+```
+
+##clustering cells based on top PCs
+
+```{r}
+#printing out the most variable genes driving PCs
+print(x = pt1272_seurat_integrated[["pca"]], 
+      dims = 1:10, 
+      nfeatures = 5)
+```
+
+```{r}
+# Plot the elbow plot
+ElbowPlot(object = pt1272_seurat_integrated,ndims = 30)
+```
+
+##Cluster cells 
+
+```{r}
+#determine the K-nearest neighbor graph
+pt1272_seurat_integrated <- FindNeighbors(object = pt1272_seurat_integrated, 
+                                   dims = 1:20)
+
+#determine the clusters for various resolutions                                
+pt1272_seurat_integrated <- FindClusters(object = pt1272_seurat_integrated,
+                                  resolution = c(0.1, 0.3, 0.5, 1.0, 1.4))
+#explore resolutions
+pt1272_seurat_integrated@meta.data %>% 
+  View()
+
+DimPlot(pt1272_seurat_integrated, group.by = "integrated_snn_res.0.3", label = TRUE, label.size = 6)
+```
+
+
+```{r}
+Idents(pt1272_seurat_integrated) <- "integrated_snn_res.0.3"
+```
+###run umap
+```{r}
+# Run UMAP
+pt1272_seurat_integrated <- RunUMAP(pt1272_seurat_integrated, 
+                             dims = 1:20,
+                             )
+```
+
+##visulaze cell clusters
+
+```{r}
+
+# Plot the UMAP
+DimPlot(pt1272_seurat_integrated,
+        reduction = "umap"
+        )
+
+```
+###exploration of quality control metrics
+-can be useful ti explore these metrics visually to see if any clusters exhibit
+-enrichment or are from different from other clusters
+```{r}
+#segration of clusters by sample
+#explore the distribution of cells per cluster in each sample
+#extract identity and sample information from seurat object to determine the number of cells per cluster per sample
+n_cells_1272 <- FetchData (pt1272_seurat_integrated, 
+                     vars = c("ident", "seq_folder")) %>%
+  dplyr::count(ident, seq_folder) %>%
+  tidyr::spread(ident, n)
+
+# View table
+View(n_cells_1272)
+```
+#visualize the cells per cluster for each sample usiNg UMAP
+
+```{r}
+#UMAP of cells in each cluster by sample
+DimPlot(pt1272_seurat_integrated, 
+        label = TRUE, 
+        split.by = "sample")  + NoLegend()
+```
+#segregation of clusters by cell cycle phase
+
+```{r}
+#explore whether clusters segregate by cell cycle phase
+DimPlot(pt1272_seurat_integrated,
+        label = TRUE, 
+        split.by = "Phase")  + NoLegend()
+```
+
+#explore additional metrics: number of UMIs and genes per cell, S-phase and G2M-phase markers, and mitochondrial gene expression by UMAP
+```{r}
+#determine metrics to plot present in seurat_integrated@meta.data
+metrics_1272 <-  c("nUMI", "nGene", "S.Score", "G2M.Score", "mitoRatio")
+
+FeaturePlot(pt1272_seurat_integrated, 
+            reduction = "umap", 
+            features = metrics_1272,
+            pt.size = 0.4, 
+            sort.cell = TRUE,
+            min.cutoff = 'q10',
+            label = TRUE)
+
+```
+##Exploration of the PCs driving the different cluster
+#adding cluster label to center of cluster on UMAP
+```{r}
+
+# Defining the information in the seurat object of interest
+columns <- c(paste0("PC_", 1:16),
+            "ident",
+            "UMAP_1", "UMAP_2")
+
+# Extracting this data from the seurat object
+pc_data_1272 <- FetchData(pt1272_seurat_integrated, 
+                     vars = columns)
+
+umap_label_1272 <- FetchData(pt1272_seurat_integrated, 
+                        vars = c("ident", "UMAP_1", "UMAP_2"))  %>%
+  group_by(ident) %>%
+  summarise(x=mean(UMAP_1), y=mean(UMAP_2))
+  
+#plotting a UMAP plot for each of the PCs
+map(paste0("PC_", 1:16), function(pc){
+        ggplot(pc_data_1272, 
+               aes(UMAP_1, UMAP_2)) +
+                geom_point(aes_string(color=pc), 
+                           alpha = 0.7) +
+                scale_color_gradient(guide = FALSE, 
+                                     low = "grey90", 
+                                     high = "blue")  +
+                geom_text(data=umap_label_1272, 
+                          aes(label=ident, x, y)) +
+                ggtitle(pc)
+}) %>% 
+        plot_grid(plotlist = .)
+
+```
+
+# Examine PCA results 
+```{r}
+print(pt1272_seurat_integrated[["pca"]], dims = 1:5, nfeatures = 5)
+```
+
+
+```{r}
+###Exploring known cell type markers
+DimPlot(object = pt1272_seurat_integrated, 
+        reduction = "umap", 
+        label = TRUE) + NoLegend()
+```
+
+
+##cell annotation 
+
+```{r}
+data_pt1272 <- pt1272_seurat_integrated
+DimPlot(data_pt1272, reduction = "umap", label= TRUE)
+
+ref_1272 <- celldex::HumanPrimaryCellAtlasData()
+
+results_1272 <- SingleR(test= as.SingleCellExperiment(data_pt1272), ref = ref_1272, labels = ref_1272$label.main)
+results_1272
+
+data_pt1272$singler_labels <- results_1272$labels
+
+data_pt1272[[]]
+
+DimPlot(data_pt1272, reduction = 'umap', group.by = 'singler_labels', label = TRUE)
+
+```
+
+###annotation diagnostics
+
+```{r}
+#based on the scores within cells
+results_1272
+results_1272$scores
+```
+
+```{r}
+###plotscoreheat map
+
+plotScoreHeatmap(results_1272) 
+```
+
+### based on deltas across cells
+plot the ditrubution of delta values. each cell gets assigned a delta value, low delta vlaues indicate that the assginemt is uncertain. the idea is to detect the cells that are outliers within each labels which could indicate ambiguous assigminmnets. 
+```{r}
+plotDeltaDistribution(results_1272)
+```
+
+### comparing to unsupervised clustering 
+
+compare the distribution of cells across different clusters. calculate the numbers of cell type labels of each cluster. Perform clustering
+
+```{r}
+tab_1272 <- table(Assigned = results_1272$labels, Clusters = data_pt1272$integrated_snn_res.0.3)
+tab_1272
+
+```
+
+```{r}
+###create a heat map
+#log tranform table values. add pseudo count of 10. 
+
+pheatmap(log10(tab_1272 + 10), color = colorRampPalette(c('white', 'blue'))(10))
+
+```
+
+# Save final R object
+
+
+```{r}
+saveRDS(pt1272_seurat_integrated, file = "pt1272/seurat_labeled_1272.rds")
+```
+
+**Session Info**
+  
+```{r}
+sessionInfo()
+```
