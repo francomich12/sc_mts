@@ -14,23 +14,8 @@ library(scales)
 library(SingleR)
 library(pheatmap)
 ```
-```{r setup, include=FALSE}
-# Set the working directory
-knitr::opts_knit$set(root.dir = "/Users/michellefranco/scRNA_patientss/data/")
-setwd(dir = "/Users/michellefranco/scRNA_patientss/data")
-```
 
-```{r}
-# Check the working directory
-current_dir_1315 <- getwd()
-current_dir_1315
-```
-
-
-## Including Plots
-
-You can also embed plots, for example:
-
+#load data
 ```{R}
 # Create each individual Seurat object for every sample
 for (file in c("PT1315_Normal_ft_bc_mx","PT1315_Tumor_ft_bc_mx")){
