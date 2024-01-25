@@ -16,9 +16,11 @@ library(SingleR)
 library(pheatmap)
 library(cowplot)
 ```
+#make sure you are working in the directory that the files are in 
+#setwd(dir = "/path")
 
+```{r}
 ##load in data and creatining individual seurat objects 
-```{r} # where are these files loaded from??
 seurat_list_pt1272_1315 <- list()
 for (file in c("PT1272_Normal_feature_bc_matrix", "PT1272_pdcc_feature_bc_matrix", "PT1315Tumor_ft_bc_mx", "PT1272_Tumor_feature_bc_matrix", "PT1315Normal_ft_bc_mx")) {
   seurat_data_pt1272_1315 <- Read10X(data.dir = paste0("pt1272_1315/", file))
@@ -38,7 +40,7 @@ seurat_list_pt1272_1315
 -add cell ids to identify cell barcodes from each datasets
 ```{r}
 
-# Create a merged Seurat object
+#create a merged Seurat object
 merged_seurat_pt1272_1315 <- merge(seurat_list_pt1272_1315$PT1272_Normal_feature_bc_matrix,
                                    y = c(seurat_list_pt1272_1315$PT1272_pdcc_feature_bc_matrix,
                                          seurat_list_pt1272_1315$PT1272_Tumor_feature_bc_matrix,
@@ -66,7 +68,6 @@ dense.size_patients / sparse.size_patients
 ```{r }
 ###add number if genes per UMI for each cell to metadata
 merged_seurat_pt1272_1315$log10GenesPerUMI <- log10(merged_seurat_pt1272_1315$nFeature_RNA) / log10(merged_seurat_pt1272_1315$nCount_RNA)
-
 
 ```
 #compute percent mito ratio 
