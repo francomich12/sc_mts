@@ -29,13 +29,13 @@ all_markers_pt1272 <-FindAllMarkers(data_pt1272,
                                     only.pos = TRUE,
                                     test.use = 'wilcox',
                                     slot = 'counts')
-# Storing the markers for each cluster in a list
+#storing the markers for each cluster in a list
 marker_lists_pt1272 <- list()
 for(i in 0:7) {   # clusters 0 through 7
   cluster_markers <- all_markers_pt1272 %>% filter(cluster == as.character(i))
   marker_lists_pt1272[[paste0("Cluster ", i)]] <- cluster_markers
   
-  # Print the first five markers for each cluster
+  #print the first five markers for each cluster
   cat("Cluster", i, ":", paste(cluster_markers$gene[1:6], collapse = ", "), "\n")
 }
 
